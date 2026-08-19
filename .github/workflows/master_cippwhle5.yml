@@ -1,5 +1,11 @@
-# Deploys CIPP-API to the live Azure Function App (cippwhle5) on push to master.
+# Deploys CIPP-API to the live Azure Function Apps on push to master.
 # Created after the Sponsorship -> MCPP migration; replaces the stale cippjta72 workflow.
+#
+# 2026-08-19: extended to also deploy the function-offloading apps (cippwhle5-proc,
+# cippwhle5-auditlog). CIPP requires every offload app to stay on the SAME version as
+# the main function app, otherwise background tasks fail - so all three deploy together.
+# If another offload type is added later (standards / usertasks), add its publish-profile
+# secret and append it to the matrix below.
 name: Build and deploy Powershell project to Azure Function App - cippwhle5
 
 on:
@@ -14,6 +20,20 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    strategy:
+      # Don't let one app's failure cancel the others - a partial version mismatch is
+      # worse than a single failed deploy we can retry.
+      fail-fast: false
+      matrix:
+        include:
+          - app-name: 'cippwhle5'
+            profile-secret: 'AZUREAPPSERVICE_PUBLISHPROFILE_CIPPWHLE5'
+          - app-name: 'cippwhle5-proc'
+            profile-secret: 'AZUREAPPSERVICE_PUBLISHPROFILE_CIPPWHLE5_PROC'
+          - app-name: 'cippwhle5-auditlog'
+            profile-secret: 'AZUREAPPSERVICE_PUBLISHPROFILE_CIPPWHLE5_AUDITLOG'
+
+    name: Deploy ${{ matrix.app-name }}
 
     steps:
       - name: 'Checkout GitHub Action'
@@ -23,7 +43,7 @@ jobs:
         uses: Azure/functions-action@v1
         id: fa
         with:
-          app-name: 'cippwhle5'
+          app-name: ${{ matrix.app-name }}
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_CIPPWHLE5 }}
+          publish-profile: ${{ secrets[matrix.profile-secret] }}
